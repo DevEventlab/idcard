@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { del, put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { rejectCrossOriginWrite, requireSchoolSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { storagePath } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,13 +98,15 @@ export async function POST(request: Request) {
     });
   }
 
-  const writtenFiles: string[] = [];
+  const uploadedBlobs: string[] = [];
   try {
-    await mkdir(storagePath("school-documents", school.id), { recursive: true });
     for (const file of files) {
-      const filePath = storagePath(file.storageKey);
-      await writeFile(filePath, file.bytes, { flag: "wx" });
-      writtenFiles.push(filePath);
+      await put(file.storageKey, file.bytes, {
+        access: "private",
+        contentType: file.mimeType,
+        addRandomSuffix: false,
+      });
+      uploadedBlobs.push(file.storageKey);
     }
 
     await prisma.$transaction(async (transaction) => {
@@ -126,7 +127,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ uploaded: files.length }, { status: 201 });
   } catch (error) {
-    await Promise.all(writtenFiles.map((file) => unlink(file).catch(() => undefined)));
+    await Promise.all(uploadedBlobs.map((key) => del(key).catch(() => undefined)));
     console.error("School verification upload failed:", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ error: "Le dépôt a échoué. Vérifiez le stockage et réessayez." }, { status: 503 });
   }

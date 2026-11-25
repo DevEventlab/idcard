@@ -7,3 +7,6 @@ node_modules
 next-env.d.ts
 /storage/
 /test-data/
+
+.vercel
+.env*

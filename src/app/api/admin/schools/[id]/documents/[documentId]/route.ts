@@ -1,8 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { get } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { storagePath } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,13 +20,16 @@ export async function GET(
     });
     if (!document) return NextResponse.json({ error: "Justificatif introuvable." }, { status: 404 });
 
-    const bytes = await readFile(storagePath(document.storageKey));
+    const blob = await get(document.storageKey, { access: "private" });
+    if (!blob || blob.statusCode !== 200) {
+      return NextResponse.json({ error: "Le justificatif est temporairement inaccessible." }, { status: 503 });
+    }
     const filename = encodeURIComponent(document.originalName);
-    return new Response(new Uint8Array(bytes), {
+    return new Response(blob.stream, {
       headers: {
         "Content-Type": document.mimeType,
         "Content-Disposition": `attachment; filename="${filename}"`,
-        "Content-Length": String(bytes.length),
+        "Content-Length": String(blob.blob.size),
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
       },
